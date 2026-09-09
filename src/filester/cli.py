@@ -34,12 +34,20 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-from requests_toolbelt.multipart.encoder import MultipartEncoder, MultipartEncoderMonitor
+from requests_toolbelt.multipart.encoder import (
+    MultipartEncoder,
+    MultipartEncoderMonitor,
+)
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import (
-    BarColumn, DownloadColumn, Progress, SpinnerColumn,
-    TextColumn, TimeRemainingColumn, TransferSpeedColumn,
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
 )
 from rich.prompt import IntPrompt
 from rich.table import Table
@@ -58,6 +66,9 @@ from . import __version__
 
 DEFAULT_BASE_URL = "https://u1.filester.me"
 DEFAULT_STATE_FILE = "~/.filester-cli/state.json"
+DEFAULT_CONFIG_DIR = (
+    Path(os.environ.get("XDG_CONFIG_HOME", "~/.config")).expanduser() / "filester"
+)
 DEFAULT_EXTENSIONS = [".mp4", ".flv", ".ts", ".mkv", ".m4v"]
 DEFAULT_IGNORE_PATTERNS = ["*.tmp", "*.part", "*.download", ".*"]
 
@@ -68,6 +79,7 @@ log = logging.getLogger("filester")
 # --------------------------------------------------------------------------
 # Errors
 # --------------------------------------------------------------------------
+
 
 class FilesterError(Exception):
     def __init__(self, message, status_code=None, payload=None):
@@ -80,10 +92,13 @@ class FilesterError(Exception):
 # API client
 # --------------------------------------------------------------------------
 
+
 class FilesterClient:
     def __init__(self, api_key=None, base_url=None, max_retries=5, connect_timeout=15):
         self.api_key = api_key or os.environ.get("FILESTER_API_KEY")
-        self.base_url = (base_url or os.environ.get("FILESTER_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        self.base_url = (
+            base_url or os.environ.get("FILESTER_BASE_URL") or DEFAULT_BASE_URL
+        ).rstrip("/")
         self.max_retries = max_retries
         self.connect_timeout = connect_timeout
         self.session = requests.Session()
@@ -97,8 +112,14 @@ class FilesterClient:
         return headers
 
     def _backoff(self, attempt, reason):
-        delay = min(60, 2 ** attempt) + random.uniform(0, 1)
-        log.warning("retrying after %s (attempt %d/%d) - sleeping %.1fs", reason, attempt, self.max_retries, delay)
+        delay = min(60, 2**attempt) + random.uniform(0, 1)
+        log.warning(
+            "retrying after %s (attempt %d/%d) - sleeping %.1fs",
+            reason,
+            attempt,
+            self.max_retries,
+            delay,
+        )
         time.sleep(delay)
 
     def _request(self, method, path, retryable=True, **kwargs):
@@ -108,15 +129,25 @@ class FilesterClient:
             attempt += 1
             try:
                 resp = self.session.request(
-                    method, url, timeout=(self.connect_timeout, 120), headers=self._headers(kwargs.pop("headers", None)), **kwargs
+                    method,
+                    url,
+                    timeout=(self.connect_timeout, 120),
+                    headers=self._headers(kwargs.pop("headers", None)),
+                    **kwargs,
                 )
             except requests.RequestException as exc:
                 if retryable and attempt <= self.max_retries:
                     self._backoff(attempt, f"network error: {exc}")
                     continue
-                raise FilesterError(f"network error calling {method} {path}: {exc}") from exc
+                raise FilesterError(
+                    f"network error calling {method} {path}: {exc}"
+                ) from exc
 
-            if retryable and (resp.status_code == 429 or resp.status_code >= 500) and attempt <= self.max_retries:
+            if (
+                retryable
+                and (resp.status_code == 429 or resp.status_code >= 500)
+                and attempt <= self.max_retries
+            ):
                 self._backoff(attempt, f"HTTP {resp.status_code}")
                 continue
 
@@ -127,9 +158,16 @@ class FilesterClient:
         try:
             data = resp.json()
         except ValueError:
-            data = {"success": False, "message": (resp.text or "")[:500] or f"HTTP {resp.status_code}"}
+            data = {
+                "success": False,
+                "message": (resp.text or "")[:500] or f"HTTP {resp.status_code}",
+            }
         if not resp.ok or data.get("success") is False:
-            raise FilesterError(data.get("message", f"HTTP {resp.status_code}"), status_code=resp.status_code, payload=data)
+            raise FilesterError(
+                data.get("message", f"HTTP {resp.status_code}"),
+                status_code=resp.status_code,
+                payload=data,
+            )
         return data
 
     # ---- account / health ----
@@ -155,7 +193,9 @@ class FilesterClient:
         return self._request("GET", f"/api/v1/folder/{identifier}/files")["data"]
 
     def delete_folders(self, identifiers):
-        return self._request("POST", "/folder/delete", json={"identifiers": identifiers})
+        return self._request(
+            "POST", "/folder/delete", json={"identifiers": identifiers}
+        )
 
     # ---- files ----
     def list_files(self, page=1, per_page=20, folder=None, search=None):
@@ -170,7 +210,9 @@ class FilesterClient:
         return self._request("POST", "/file/delete", json={"identifiers": identifiers})
 
     # ---- upload ----
-    def upload_file(self, path: Path, folder_id: Optional[str] = None, show_progress=True):
+    def upload_file(
+        self, path: Path, folder_id: Optional[str] = None, show_progress=True
+    ):
         size = path.stat().st_size
         progress = None
         task_id = None
@@ -197,10 +239,13 @@ class FilesterClient:
                     progress.reset(task_id, total=size)
                 fh = open(path, "rb")
                 try:
-                    encoder = MultipartEncoder(fields={"file": (path.name, fh, "application/octet-stream")})
+                    encoder = MultipartEncoder(
+                        fields={"file": (path.name, fh, "application/octet-stream")}
+                    )
                     if progress is not None:
                         monitor = MultipartEncoderMonitor(
-                            encoder, lambda m: progress.update(task_id, completed=m.bytes_read)
+                            encoder,
+                            lambda m: progress.update(task_id, completed=m.bytes_read),
                         )
                     else:
                         monitor = MultipartEncoderMonitor(encoder)
@@ -223,7 +268,9 @@ class FilesterClient:
                 finally:
                     fh.close()
 
-                if (resp.status_code == 429 or resp.status_code >= 500) and attempt <= self.max_retries:
+                if (
+                    resp.status_code == 429 or resp.status_code >= 500
+                ) and attempt <= self.max_retries:
                     self._backoff(attempt, f"HTTP {resp.status_code}")
                     continue
 
@@ -236,6 +283,7 @@ class FilesterClient:
 # --------------------------------------------------------------------------
 # Folder path resolution
 # --------------------------------------------------------------------------
+
 
 class FolderResolver:
     def __init__(self, client: FilesterClient):
@@ -280,18 +328,26 @@ class FolderResolver:
             folder_id = self._index.get(key)
             if folder_id is None:
                 if not create:
-                    raise FilesterError(f"folder not found: {path_str!r} (missing segment {part!r})")
+                    raise FilesterError(
+                        f"folder not found: {path_str!r} (missing segment {part!r})"
+                    )
                 created = self.client.create_folder(part, parent=parent, public=public)
                 folder_id = created["identifier"]
                 self._index[key] = folder_id
                 folder_rec = {"id": folder_id, "name": part, "parent_id": parent}
                 self._folders.append(folder_rec)
                 self._folders_by_id[folder_id] = folder_rec
-                log.info("created remote folder %r (id=%s)", self._full_path(folder_rec), folder_id)
+                log.info(
+                    "created remote folder %r (id=%s)",
+                    self._full_path(folder_rec),
+                    folder_id,
+                )
             parent = folder_id
         return parent
 
-    def resolve_smart(self, query: Optional[str], create=True, public=1) -> Optional[str]:
+    def resolve_smart(
+        self, query: Optional[str], create=True, public=1
+    ) -> Optional[str]:
         """Fuzzy resolution for interactive use: case-insensitive substring
         search over existing folder paths, so you don't need the exact path
         or an id. Exactly one match -> use it. Multiple -> pick-list (or an
@@ -315,21 +371,27 @@ class FolderResolver:
 
         if len(candidates) > 1:
             if sys.stdin.isatty():
-                table = Table(title=f"multiple folders match {query!r}", show_lines=False)
+                table = Table(
+                    title=f"multiple folders match {query!r}", show_lines=False
+                )
                 table.add_column("#", justify="right", style="cyan")
                 table.add_column("path", style="bold")
                 table.add_column("id", style="dim")
                 for i, (path, fid) in enumerate(candidates, 1):
                     table.add_row(str(i), path, fid)
                 console.print(table)
-                console.print(f"  [{len(candidates) + 1}] create new folder {query!r} instead")
+                console.print(
+                    f"  [{len(candidates) + 1}] create new folder {query!r} instead"
+                )
                 choice = IntPrompt.ask("pick one", default=len(candidates) + 1)
                 if 1 <= choice <= len(candidates):
                     return candidates[choice - 1][1]
                 # else fall through to create below
             else:
                 names = ", ".join(p for p, _ in candidates)
-                raise FilesterError(f"ambiguous folder {query!r}, matches: {names} - use the exact path/id, or run interactively")
+                raise FilesterError(
+                    f"ambiguous folder {query!r}, matches: {names} - use the exact path/id, or run interactively"
+                )
 
         return self.resolve(query, create=create, public=public)
 
@@ -337,6 +399,7 @@ class FolderResolver:
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
+
 
 def human_size(n: float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -370,6 +433,53 @@ def save_state(state_file: Path, state: dict):
 # Commands
 # --------------------------------------------------------------------------
 
+
+def find_env_file(explicit: Optional[str]) -> Optional[Path]:
+    """Search order: an explicitly-passed --env-file, ./.env in the current
+    directory, then a fixed per-user config location - so `uv tool install`
+    / pipx installs (which run outside any project directory) still pick up
+    saved credentials no matter where you invoke `filester` from."""
+    candidates = []
+    if explicit and explicit != ".env":
+        candidates.append(Path(explicit).expanduser())
+    else:
+        candidates.append(Path(".env"))
+        candidates.append(DEFAULT_CONFIG_DIR / ".env")
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
+
+
+def cmd_config(client: FilesterClient, args):
+    DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    env_path = DEFAULT_CONFIG_DIR / ".env"
+
+    if args.show:
+        if env_path.exists():
+            console.print(f"[bold]{env_path}[/]")
+            for line in env_path.read_text().splitlines():
+                if line.strip().startswith("FILESTER_API_KEY"):
+                    key, _, val = line.partition("=")
+                    console.print(f"{key}={val[:4]}{'*' * max(len(val) - 4, 0)}")
+                else:
+                    console.print(line)
+        else:
+            console.print(f"[dim]no config saved yet at {env_path}[/]")
+        return
+
+    api_key = args.config_api_key or console.input("Filester API key: ").strip()
+    if not api_key:
+        raise FilesterError("no API key given")
+    base_url = args.config_base_url or DEFAULT_BASE_URL
+
+    env_path.write_text(f"FILESTER_API_KEY={api_key}\nFILESTER_BASE_URL={base_url}\n")
+    env_path.chmod(0o600)
+    console.print(
+        f"[green]saved[/] to {env_path} - `filester` will pick this up automatically from now on"
+    )
+
+
 def cmd_account(client: FilesterClient, args):
     data = client.account()
     used, limit = data.get("storage_used", 0), data.get("storage_limit", 0)
@@ -386,8 +496,10 @@ def cmd_account(client: FilesterClient, args):
     console.print(table)
 
     if pct >= 80:
-        console.print("[bold yellow]![/] storage is over 80% full - the free tier caps at 10GB total,"
-                       " uploads will start failing once it's full.")
+        console.print(
+            "[bold yellow]![/] storage is over 80% full - the free tier caps at 10GB total,"
+            " uploads will start failing once it's full."
+        )
 
 
 def cmd_folders(client: FilesterClient, args):
@@ -408,14 +520,22 @@ def cmd_folders(client: FilesterClient, args):
 
 def cmd_mkdir(client: FilesterClient, args):
     resolver = FolderResolver(client)
-    folder_id = resolver.resolve(args.path, create=True, public=0 if args.private else 1)
+    folder_id = resolver.resolve(
+        args.path, create=True, public=0 if args.private else 1
+    )
     console.print(f"[green]ready[/]: {args.path} -> [bold]{folder_id}[/]")
 
 
 def cmd_files(client: FilesterClient, args):
     resolver = FolderResolver(client) if args.folder_path else None
-    folder_id = resolver.resolve_smart(args.folder_path, create=False) if resolver else args.folder_id
-    result = client.list_files(page=args.page, per_page=args.per_page, folder=folder_id, search=args.search)
+    folder_id = (
+        resolver.resolve_smart(args.folder_path, create=False)
+        if resolver
+        else args.folder_id
+    )
+    result = client.list_files(
+        page=args.page, per_page=args.per_page, folder=folder_id, search=args.search
+    )
 
     table = Table(title="Files")
     table.add_column("id", style="dim")
@@ -423,21 +543,43 @@ def cmd_files(client: FilesterClient, args):
     table.add_column("name", style="bold")
     table.add_column("url", style="cyan")
     for f in result["data"]:
-        table.add_row(f.get("uuid", f.get("id")), human_size(f["size"]), f["name"], f["url"])
+        table.add_row(
+            f.get("uuid", f.get("id")), human_size(f["size"]), f["name"], f["url"]
+        )
     console.print(table)
 
     pg = result.get("pagination", {})
     if pg:
-        console.print(f"[dim]page {pg.get('page')}/{pg.get('pages')} ({pg.get('total')} files total)[/]")
+        console.print(
+            f"[dim]page {pg.get('page')}/{pg.get('pages')} ({pg.get('total')} files total)[/]"
+        )
 
 
-def _upload_one(client: FilesterClient, resolver: FolderResolver, path: Path, folder_path: Optional[str],
-                 folder_id: Optional[str], no_progress: bool, delete_after: bool, smart: bool = True):
+def _upload_one(
+    client: FilesterClient,
+    resolver: FolderResolver,
+    path: Path,
+    folder_path: Optional[str],
+    folder_id: Optional[str],
+    no_progress: bool,
+    delete_after: bool,
+    smart: bool = True,
+):
     if folder_path is not None:
-        folder_id = resolver.resolve_smart(folder_path) if smart else resolver.resolve(folder_path)
-    log.info("uploading %s (%s)%s", path, human_size(path.stat().st_size),
-              f" -> folder {folder_id}" if folder_id else "")
-    result = client.upload_file(path, folder_id=folder_id, show_progress=not no_progress)
+        folder_id = (
+            resolver.resolve_smart(folder_path)
+            if smart
+            else resolver.resolve(folder_path)
+        )
+    log.info(
+        "uploading %s (%s)%s",
+        path,
+        human_size(path.stat().st_size),
+        f" -> folder {folder_id}" if folder_id else "",
+    )
+    result = client.upload_file(
+        path, folder_id=folder_id, show_progress=not no_progress
+    )
     console.print(f"[bold green]OK[/]  {path.name} -> [cyan]{result['url']}[/]")
     if delete_after:
         path.unlink()
@@ -452,7 +594,15 @@ def cmd_upload(client: FilesterClient, args):
         raise FilesterError(f"no such file or directory: {target}")
 
     if target.is_file():
-        _upload_one(client, resolver, target, args.folder_path, args.folder_id, args.no_progress, args.delete_after)
+        _upload_one(
+            client,
+            resolver,
+            target,
+            args.folder_path,
+            args.folder_id,
+            args.no_progress,
+            args.delete_after,
+        )
         return
 
     exts = [e.lower() for e in (args.ext or DEFAULT_EXTENSIONS)]
@@ -471,8 +621,15 @@ def cmd_upload(client: FilesterClient, args):
             else:
                 dest_path = args.folder_path
             try:
-                _upload_one(client, resolver, fp, dest_path, args.folder_id if not dest_path else None,
-                            args.no_progress, args.delete_after)
+                _upload_one(
+                    client,
+                    resolver,
+                    fp,
+                    dest_path,
+                    args.folder_id if not dest_path else None,
+                    args.no_progress,
+                    args.delete_after,
+                )
                 count += 1
             except FilesterError as exc:
                 log.error("failed to upload %s: %s", fp, exc)
@@ -499,7 +656,12 @@ def cmd_watch(client: FilesterClient, args):
     signal.signal(signal.SIGTERM, _handle_signal)
 
     last_seen_size = {}
-    log.info("watching %s (poll every %ss, stable after %ss unchanged)", watch_dir, args.poll_interval, args.stable_seconds)
+    log.info(
+        "watching %s (poll every %ss, stable after %ss unchanged)",
+        watch_dir,
+        args.poll_interval,
+        args.stable_seconds,
+    )
 
     while not stop["flag"]:
         try:
@@ -518,7 +680,11 @@ def cmd_watch(client: FilesterClient, args):
                         continue
 
                     already = state["uploaded"].get(key)
-                    if already and already.get("size") == stat.st_size and already.get("mtime") == stat.st_mtime:
+                    if (
+                        already
+                        and already.get("size") == stat.st_size
+                        and already.get("mtime") == stat.st_mtime
+                    ):
                         continue
 
                     prev_size = last_seen_size.get(key)
@@ -541,10 +707,20 @@ def cmd_watch(client: FilesterClient, args):
                     dest_path = args.folder_path
 
                 try:
-                    result = _upload_one(client, resolver, fp, dest_path, args.folder_id if not dest_path else None,
-                                          args.no_progress, delete_after=False, smart=False)
+                    result = _upload_one(
+                        client,
+                        resolver,
+                        fp,
+                        dest_path,
+                        args.folder_id if not dest_path else None,
+                        args.no_progress,
+                        delete_after=False,
+                        smart=False,
+                    )
                 except FilesterError as exc:
-                    log.error("upload failed for %s, will retry next cycle: %s", fp, exc)
+                    log.error(
+                        "upload failed for %s, will retry next cycle: %s", fp, exc
+                    )
                     continue
 
                 state["uploaded"][str(fp)] = {
@@ -577,53 +753,150 @@ def cmd_watch(client: FilesterClient, args):
 # CLI wiring
 # --------------------------------------------------------------------------
 
+
 def build_parser():
-    p = argparse.ArgumentParser(prog="filester", description="A CLI for the Filester storage API", formatter_class=RichHelpFormatter)
+    p = argparse.ArgumentParser(
+        prog="filester",
+        description="A CLI for the Filester storage API",
+        formatter_class=RichHelpFormatter,
+    )
     p.add_argument("--version", action="version", version=f"filester-cli {__version__}")
-    p.add_argument("--env-file", default=".env", help="path to a .env file to load (default: ./.env if present)")
+    p.add_argument(
+        "--env-file",
+        default=".env",
+        help="path to a .env file to load (default: ./.env if present)",
+    )
     p.add_argument("--api-key", default=None, help="overrides FILESTER_API_KEY")
     p.add_argument("--base-url", default=None, help="overrides FILESTER_BASE_URL")
-    p.add_argument("--max-retries", type=int, default=int(os.environ.get("FILESTER_MAX_RETRIES", 5)))
+    p.add_argument(
+        "--max-retries",
+        type=int,
+        default=int(os.environ.get("FILESTER_MAX_RETRIES", 5)),
+    )
     p.add_argument("-v", "--verbose", action="store_true")
 
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("account", help="show account info / storage usage")
 
-    sp = sub.add_parser("folders", help="list all folders")
-    sp.add_argument("--search", default=None, help="only show folders whose path contains this (case-insensitive)")
+    sp = sub.add_parser(
+        "config",
+        help="save your API key to a persistent config file (~/.config/filester/.env)",
+    )
+    sp.add_argument(
+        "--api-key",
+        dest="config_api_key",
+        default=None,
+        help="skip the prompt and set it directly",
+    )
+    sp.add_argument("--base-url", dest="config_base_url", default=None)
+    sp.add_argument(
+        "--show",
+        action="store_true",
+        help="show the currently saved config instead of setting it",
+    )
 
-    sp = sub.add_parser("mkdir", help='create a folder, e.g. "Streamers/Alice" creates both levels')
+    sp = sub.add_parser("folders", help="list all folders")
+    sp.add_argument(
+        "--search",
+        default=None,
+        help="only show folders whose path contains this (case-insensitive)",
+    )
+
+    sp = sub.add_parser(
+        "mkdir", help='create a folder, e.g. "Streamers/Alice" creates both levels'
+    )
     sp.add_argument("path")
     sp.add_argument("--private", action="store_true")
 
     sp = sub.add_parser("files", help="list files")
     sp.add_argument("--folder-id", default=None)
-    sp.add_argument("--folder-path", default=None, help='e.g. "Streamers/Alice", or just a partial name')
+    sp.add_argument(
+        "--folder-path",
+        default=None,
+        help='e.g. "Streamers/Alice", or just a partial name',
+    )
     sp.add_argument("--page", type=int, default=1)
     sp.add_argument("--per-page", type=int, default=20)
     sp.add_argument("--search", default=None)
 
-    sp = sub.add_parser("upload", help="upload a single file, or every matching file in a directory")
+    sp = sub.add_parser(
+        "upload", help="upload a single file, or every matching file in a directory"
+    )
     sp.add_argument("path")
-    sp.add_argument("--folder-id", default=None, help="upload into this existing folder id")
-    sp.add_argument("--folder-path", default=None, help='remote destination, e.g. "alice" (fuzzy-matched) or "Streamers/Alice"')
-    sp.add_argument("--mirror", action="store_true", help="when path is a directory, mirror its subfolders remotely")
-    sp.add_argument("--ext", nargs="*", default=None, help=f"only upload these extensions (default: {DEFAULT_EXTENSIONS})")
-    sp.add_argument("--delete-after", action="store_true", help="delete local file(s) once uploaded successfully")
+    sp.add_argument(
+        "--folder-id", default=None, help="upload into this existing folder id"
+    )
+    sp.add_argument(
+        "--folder-path",
+        default=None,
+        help='remote destination, e.g. "alice" (fuzzy-matched) or "Streamers/Alice"',
+    )
+    sp.add_argument(
+        "--mirror",
+        action="store_true",
+        help="when path is a directory, mirror its subfolders remotely",
+    )
+    sp.add_argument(
+        "--ext",
+        nargs="*",
+        default=None,
+        help=f"only upload these extensions (default: {DEFAULT_EXTENSIONS})",
+    )
+    sp.add_argument(
+        "--delete-after",
+        action="store_true",
+        help="delete local file(s) once uploaded successfully",
+    )
     sp.add_argument("--no-progress", action="store_true")
 
-    sp = sub.add_parser("watch", help="watch a directory and auto-upload finished recordings")
-    sp.add_argument("--dir", required=True, help="directory to watch (e.g. ctbrec's recordings folder)")
-    sp.add_argument("--folder-id", default=None, help="upload everything into this existing folder id")
-    sp.add_argument("--folder-path", default=None, help='remote base folder, e.g. "Streamers" (auto-created)')
-    sp.add_argument("--mirror", action="store_true", default=True, help="mirror subfolder names remotely (default: on)")
+    sp = sub.add_parser(
+        "watch", help="watch a directory and auto-upload finished recordings"
+    )
+    sp.add_argument(
+        "--dir",
+        required=True,
+        help="directory to watch (e.g. ctbrec's recordings folder)",
+    )
+    sp.add_argument(
+        "--folder-id",
+        default=None,
+        help="upload everything into this existing folder id",
+    )
+    sp.add_argument(
+        "--folder-path",
+        default=None,
+        help='remote base folder, e.g. "Streamers" (auto-created)',
+    )
+    sp.add_argument(
+        "--mirror",
+        action="store_true",
+        default=True,
+        help="mirror subfolder names remotely (default: on)",
+    )
     sp.add_argument("--no-mirror", dest="mirror", action="store_false")
-    sp.add_argument("--mirror-depth", type=int, default=1, help="how many subfolder levels to mirror (default: 1)")
+    sp.add_argument(
+        "--mirror-depth",
+        type=int,
+        default=1,
+        help="how many subfolder levels to mirror (default: 1)",
+    )
     sp.add_argument("--ext", nargs="*", default=None)
-    sp.add_argument("--poll-interval", type=float, default=30, help="seconds between directory scans")
-    sp.add_argument("--stable-seconds", type=float, default=60, help="a file must be unchanged this long before it's uploaded")
-    sp.add_argument("--delete-after", action="store_true", help="delete local file once uploaded")
+    sp.add_argument(
+        "--poll-interval",
+        type=float,
+        default=30,
+        help="seconds between directory scans",
+    )
+    sp.add_argument(
+        "--stable-seconds",
+        type=float,
+        default=60,
+        help="a file must be unchanged this long before it's uploaded",
+    )
+    sp.add_argument(
+        "--delete-after", action="store_true", help="delete local file once uploaded"
+    )
     sp.add_argument("--state-file", default=DEFAULT_STATE_FILE)
     sp.add_argument("--no-progress", action="store_true")
 
@@ -637,23 +910,32 @@ def main(argv=None):
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(console=console, show_path=False, markup=True, rich_tracebacks=True)],
+        handlers=[
+            RichHandler(
+                console=console, show_path=False, markup=True, rich_tracebacks=True
+            )
+        ],
     )
 
-    env_path = Path(args.env_file).expanduser()
-    if env_path.exists():
+    env_path = find_env_file(args.env_file)
+    if env_path:
         if load_dotenv:
             load_dotenv(env_path, override=False)
             log.debug("loaded env vars from %s", env_path)
         else:
             log.warning("%s exists but python-dotenv isn't installed", env_path)
 
-    client = FilesterClient(api_key=args.api_key, base_url=args.base_url, max_retries=args.max_retries)
-    if not client.api_key:
-        log.warning("no API key set (FILESTER_API_KEY) - uploads will go through as anonymous guest uploads")
+    client = FilesterClient(
+        api_key=args.api_key, base_url=args.base_url, max_retries=args.max_retries
+    )
+    if not client.api_key and args.command != "config":
+        log.warning(
+            "no API key set - run `filester config` to save one, or set FILESTER_API_KEY"
+        )
 
     handlers = {
         "account": cmd_account,
+        "config": cmd_config,
         "folders": cmd_folders,
         "mkdir": cmd_mkdir,
         "files": cmd_files,
