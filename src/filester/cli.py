@@ -219,7 +219,9 @@ class FilesterClient:
         if show_progress:
             progress = Progress(
                 SpinnerColumn(),
-                TextColumn("[bold cyan]{task.fields[filename]}"),
+                TextColumn(
+                    "[bold cyan]{task.fields[filename]}[/][yellow]{task.fields[note]}[/]"
+                ),
                 BarColumn(bar_width=30),
                 "[progress.percentage]{task.percentage:>3.1f}%",
                 DownloadColumn(),
@@ -229,7 +231,18 @@ class FilesterClient:
                 transient=True,
             )
             progress.start()
-            task_id = progress.add_task("upload", filename=path.name[:32], total=size)
+            task_id = progress.add_task(
+                "upload", filename=path.name[:32], note="", total=size
+            )
+
+        def _on_progress(monitor):
+            assert progress is not None
+            progress.update(task_id, completed=monitor.bytes_read)
+            if monitor.bytes_read >= size:
+                progress.update(
+                    task_id,
+                    note=" - upload sent, waiting for Filester to process...",
+                )
 
         attempt = 0
         try:
@@ -237,16 +250,14 @@ class FilesterClient:
                 attempt += 1
                 if progress is not None:
                     progress.reset(task_id, total=size)
+                    progress.update(task_id, note="")
                 fh = open(path, "rb")
                 try:
                     encoder = MultipartEncoder(
                         fields={"file": (path.name, fh, "application/octet-stream")}
                     )
                     if progress is not None:
-                        monitor = MultipartEncoderMonitor(
-                            encoder,
-                            lambda m: progress.update(task_id, completed=m.bytes_read),
-                        )
+                        monitor = MultipartEncoderMonitor(encoder, _on_progress)
                     else:
                         monitor = MultipartEncoderMonitor(encoder)
 
