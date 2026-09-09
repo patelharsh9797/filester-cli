@@ -8,7 +8,7 @@ directory of files you want auto-uploaded.
 ```
 $ filester account
   Filester account
-  user                 your_username
+  user                 harsh
   storage              2.1GB / 10.0GB  (21.0%)
   files                14
   folders              3
@@ -22,36 +22,58 @@ $ filester upload video.mp4 --folder-path alice
 ## Install
 
 ```bash
-# with pipx (recommended - isolated, puts `filester` on your PATH)
-pipx install git+https://github.com/YOUR_USERNAME/filester-cli
+# with uv (recommended)
+uv tool install git+https://github.com/patelharsh9797/filester-cli
 
-# or with uv
-uv tool install git+https://github.com/YOUR_USERNAME/filester-cli
+# or with pipx
+pipx install git+https://github.com/patelharsh9797/filester-cli
 
 # or from a local clone, for development
-git clone https://github.com/YOUR_USERNAME/filester-cli
+git clone https://github.com/patelharsh9797/filester-cli
 cd filester-cli
 uv pip install -e .        # or: pip install -e .
 ```
 
-Once installed, `filester` is a single command on your `$PATH` - no more
-`python3 filester_cli.py ...`, no manual venv activation needed for pipx/uv
-tool installs.
+`filester` lands on your `$PATH` as a single command — no manual venv
+activation, no `python3 filester_cli.py`.
 
 ## Configure
 
 ```bash
-cp .env.example .env
-nano .env   # paste your API key from https://filester.me/account
+filester config --api-key YOUR_API_KEY
 ```
 
-`filester` auto-loads `./.env` on every run (override with `--env-file`).
-Vars: `FILESTER_API_KEY`, `FILESTER_BASE_URL`, `FILESTER_MAX_RETRIES`.
+This saves your key to `~/.config/filester/.env` (mode `600`). `filester`
+auto-loads it from there on every run, from any directory — no `cd`, no
+`source .env`, no per-command flags needed.
+
+```bash
+filester config --show     # see what's saved (key is masked)
+```
+
+Other ways to set it, if you prefer:
+- a `./.env` file in the current directory (checked first, before the
+  saved config) — see `.env.example`
+- environment variables: `FILESTER_API_KEY`, `FILESTER_BASE_URL`,
+  `FILESTER_MAX_RETRIES`
+- `--api-key` / `--base-url` flags on any command
+
+## Upgrading
+
+```bash
+filester upgrade
+```
+
+Detects however you installed it (`uv tool`, `pipx`, or plain `pip`) and
+runs the right upgrade command for you — no need to remember
+`uv tool install --force ...` or similar.
 
 ## Commands
 
 ```bash
 filester account                                    # storage usage
+filester config [--api-key KEY] [--show]              # save/view credentials
+filester upgrade                                     # update to the latest version
 filester folders [--search TERM]                     # list / grep folders
 filester mkdir "Streamers/Alice"                      # creates both levels if missing
 filester files [--folder-path X] [--search TERM]      # list files
