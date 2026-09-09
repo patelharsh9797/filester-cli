@@ -749,6 +749,30 @@ def cmd_watch(client: FilesterClient, args):
     log.info("stopped")
 
 
+def cmd_upgrade(client: FilesterClient, args):
+    import shutil
+    import subprocess
+
+    repo_url = "git+https://github.com/patelharsh9797/filester-cli"
+
+    if shutil.which("uv"):
+        cmd = ["uv", "tool", "upgrade", "filester-cli"]
+    elif shutil.which("pipx"):
+        cmd = ["pipx", "upgrade", "filester-cli"]
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", repo_url]
+
+    console.print(f"[dim]$ {' '.join(cmd)}[/]")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        raise FilesterError(
+            f"upgrade command failed (exit {result.returncode}) - try manually: {' '.join(cmd)}"
+        )
+    console.print(
+        "[green]done[/] - run `filester --version` to confirm the new version"
+    )
+
+
 # --------------------------------------------------------------------------
 # CLI wiring
 # --------------------------------------------------------------------------
@@ -778,11 +802,13 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("account", help="show account info / storage usage")
+    sub.add_parser("upgrade", help="upgrade filester-cli to the latest version")
 
     sp = sub.add_parser(
         "config",
         help="save your API key to a persistent config file (~/.config/filester/.env)",
     )
+
     sp.add_argument(
         "--api-key",
         dest="config_api_key",
@@ -928,7 +954,8 @@ def main(argv=None):
     client = FilesterClient(
         api_key=args.api_key, base_url=args.base_url, max_retries=args.max_retries
     )
-    if not client.api_key and args.command != "config":
+
+    if not client.api_key and args.command not in ("config", "upgrade"):
         log.warning(
             "no API key set - run `filester config` to save one, or set FILESTER_API_KEY"
         )
@@ -941,6 +968,7 @@ def main(argv=None):
         "files": cmd_files,
         "upload": cmd_upload,
         "watch": cmd_watch,
+        "upgrade": cmd_upgrade,
     }
 
     try:
