@@ -77,7 +77,7 @@ filester upgrade                                     # update to the latest vers
 filester folders [--search TERM]                     # list / grep folders
 filester mkdir "Streamers/Alice"                      # creates both levels if missing
 filester files [--folder-path X] [--search TERM]      # list files
-filester upload <file-or-dir> [--folder-path X]        # upload
+filester upload <file-or-dir> [--folder-path|-d X]        # upload
 filester watch --dir <path> [--folder-path X]          # auto-upload daemon
 ```
 

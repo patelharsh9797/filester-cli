@@ -855,6 +855,7 @@ def build_parser():
     )
     sp.add_argument(
         "--folder-path",
+        "-d",
         default=None,
         help='remote destination, e.g. "alice" (fuzzy-matched) or "Streamers/Alice"',
     )
