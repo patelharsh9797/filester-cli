@@ -1,0 +1,24 @@
+[Unit]
+Description=Filester auto-uploader for ctbrec recordings
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=harsh
+WorkingDirectory=/opt/filester-cli
+EnvironmentFile=/opt/filester-cli/.env
+# after `pipx install .` or `uv tool install .`, `filester` is on PATH -
+# use `which filester` to confirm the exact path if this doesn't resolve
+ExecStart=/usr/bin/env filester watch \
+    --dir /path/to/ctbrec/recordings \
+    --folder-path Streamers \
+    --mirror --mirror-depth 1 \
+    --delete-after \
+    --poll-interval 30 \
+    --stable-seconds 60
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
