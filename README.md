@@ -77,11 +77,22 @@ filester upgrade                                     # update to the latest vers
 filester folders [--search TERM]                     # list / grep folders
 filester mkdir "Streamers/Alice"                      # creates both levels if missing
 filester files [--folder-path X] [--search TERM]      # list files
-filester upload <file-or-dir> [--folder-path|-d X]        # upload
+filester upload <file-or-dir> [--folder-path X]        # upload
 filester watch --dir <path> [--folder-path X]          # auto-upload daemon
 ```
 
 Run `filester <command> --help` for full flag lists.
+
+### Short flags
+
+| Flag | Short | Commands |
+|---|---|---|
+| `--version` | `-V` | global |
+| `--search` | `-s` | `folders`, `files` |
+| `--folder-path` | `-d` | `files`, `watch` |
+| `--delete-after` | `-D` | `upload`, `watch` |
+| `--no-progress` | `-np` | `upload`, `watch` |
+| `--ext` | `-e` | `watch` |
 
 ### `--folder-path` is fuzzy
 
@@ -123,6 +134,41 @@ An example systemd unit is in `systemd/filester-watch.service`.
 
 - [ ] `filester download` - pull files back down (not built yet)
 - [ ] parallel uploads for `upload <dir>`
+
+## Versioning & releasing
+
+There's a single source of truth: the `version` field in `pyproject.toml`.
+`filester --version` / `-V` reads it dynamically from the installed
+package's metadata (`importlib.metadata`), so there's nothing else to bump
+in code — no hardcoded version string sitting in a second file to forget
+about.
+
+To cut a new release:
+
+```bash
+# 1. bump the version
+#    edit pyproject.toml -> version = "0.3.0"   (follow semver: MAJOR.MINOR.PATCH)
+
+# 2. commit and tag it
+git add pyproject.toml
+git commit -m "release: v0.3.0"
+git tag v0.3.0
+git push && git push --tags
+
+# 3. users update with:
+filester upgrade
+```
+
+Semver guide for picking the version bump:
+- **PATCH** (0.2.0 -> 0.2.1): bug fixes, no new flags/behavior
+- **MINOR** (0.2.0 -> 0.3.0): new commands/flags, backwards compatible
+- **MAJOR** (0.2.0 -> 1.0.0): breaking changes (renamed/removed flags, changed defaults)
+
+Since `uv tool install`/`pipx install` from a git URL always pulls whatever
+is on the default branch, `filester upgrade` will pick up the latest commit
+on `main` even without a tag — tags are mainly for having a readable
+changelog and a point to roll back to, not a strict requirement for
+upgrades to work.
 
 ## Important caveats
 

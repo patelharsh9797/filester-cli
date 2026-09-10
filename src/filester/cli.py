@@ -795,7 +795,9 @@ def build_parser():
         description="A CLI for the Filester storage API",
         formatter_class=RichHelpFormatter,
     )
-    p.add_argument("--version", action="version", version=f"filester-cli {__version__}")
+    p.add_argument(
+        "--version", "-V", action="version", version=f"filester-cli {__version__}"
+    )
     p.add_argument(
         "--env-file",
         default=".env",
@@ -836,6 +838,7 @@ def build_parser():
     sp = sub.add_parser("folders", help="list all folders")
     sp.add_argument(
         "--search",
+        "-s",
         default=None,
         help="only show folders whose path contains this (case-insensitive)",
     )
@@ -850,12 +853,13 @@ def build_parser():
     sp.add_argument("--folder-id", default=None)
     sp.add_argument(
         "--folder-path",
+        "-d",
         default=None,
         help='e.g. "Streamers/Alice", or just a partial name',
     )
     sp.add_argument("--page", type=int, default=1)
     sp.add_argument("--per-page", type=int, default=20)
-    sp.add_argument("--search", default=None)
+    sp.add_argument("--search", "-s", default=None)
 
     sp = sub.add_parser(
         "upload", help="upload a single file, or every matching file in a directory"
@@ -883,10 +887,11 @@ def build_parser():
     )
     sp.add_argument(
         "--delete-after",
+        "-D",
         action="store_true",
         help="delete local file(s) once uploaded successfully",
     )
-    sp.add_argument("--no-progress", action="store_true")
+    sp.add_argument("--no-progress", "-np", action="store_true")
 
     sp = sub.add_parser(
         "watch", help="watch a directory and auto-upload finished recordings"
@@ -903,6 +908,7 @@ def build_parser():
     )
     sp.add_argument(
         "--folder-path",
+        "-d",
         default=None,
         help='remote base folder, e.g. "Streamers" (auto-created)',
     )
@@ -919,7 +925,7 @@ def build_parser():
         default=1,
         help="how many subfolder levels to mirror (default: 1)",
     )
-    sp.add_argument("--ext", nargs="*", default=None)
+    sp.add_argument("--ext", "-e", nargs="*", default=None)
     sp.add_argument(
         "--poll-interval",
         type=float,
@@ -933,10 +939,13 @@ def build_parser():
         help="a file must be unchanged this long before it's uploaded",
     )
     sp.add_argument(
-        "--delete-after", action="store_true", help="delete local file once uploaded"
+        "--delete-after",
+        "-D",
+        action="store_true",
+        help="delete local file once uploaded",
     )
     sp.add_argument("--state-file", default=DEFAULT_STATE_FILE)
-    sp.add_argument("--no-progress", action="store_true")
+    sp.add_argument("--no-progress", "-np", action="store_true")
 
     return p
 
