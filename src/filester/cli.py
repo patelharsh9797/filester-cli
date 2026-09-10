@@ -18,6 +18,7 @@ Config comes from environment variables (or a .env file next to where
 you run it): FILESTER_API_KEY, FILESTER_BASE_URL, FILESTER_MAX_RETRIES.
 See .env.example.
 """
+# PYTHON_ARGCOMPLETE_OK
 
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import argcomplete
 import requests
 from requests_toolbelt.multipart.encoder import (
     MultipartEncoder,
@@ -236,19 +238,17 @@ class FilesterClient:
             )
 
         def _on_progress(monitor):
-            assert progress is not None
             progress.update(task_id, completed=monitor.bytes_read)
             if monitor.bytes_read >= size:
                 progress.update(
-                    task_id,
-                    note=" - upload sent, waiting for Filester to process...",
+                    task_id, note=" - upload sent, waiting for Filester to process..."
                 )
 
         attempt = 0
         try:
             while True:
                 attempt += 1
-                if progress is not None:
+                if progress is not None and task_id is not None:
                     progress.reset(task_id, total=size)
                     progress.update(task_id, note="")
                 fh = open(path, "rb")
@@ -488,6 +488,30 @@ def cmd_config(client: FilesterClient, args):
     env_path.chmod(0o600)
     console.print(
         f"[green]saved[/] to {env_path} - `filester` will pick this up automatically from now on"
+    )
+
+
+def cmd_upgrade(client: FilesterClient, args):
+    import shutil
+    import subprocess
+
+    repo_url = "git+https://github.com/patelharsh9797/filester-cli"
+
+    if shutil.which("uv"):
+        cmd = ["uv", "tool", "upgrade", "filester-cli"]
+    elif shutil.which("pipx"):
+        cmd = ["pipx", "upgrade", "filester-cli"]
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", repo_url]
+
+    console.print(f"[dim]$ {' '.join(cmd)}[/]")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        raise FilesterError(
+            f"upgrade command failed (exit {result.returncode}) - try manually: {' '.join(cmd)}"
+        )
+    console.print(
+        "[green]done[/] - run `filester --version` to confirm the new version"
     )
 
 
@@ -760,30 +784,6 @@ def cmd_watch(client: FilesterClient, args):
     log.info("stopped")
 
 
-def cmd_upgrade(client: FilesterClient, args):
-    import shutil
-    import subprocess
-
-    repo_url = "git+https://github.com/patelharsh9797/filester-cli"
-
-    if shutil.which("uv"):
-        cmd = ["uv", "tool", "upgrade", "filester-cli"]
-    elif shutil.which("pipx"):
-        cmd = ["pipx", "upgrade", "filester-cli"]
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", repo_url]
-
-    console.print(f"[dim]$ {' '.join(cmd)}[/]")
-    result = subprocess.run(cmd)
-    if result.returncode != 0:
-        raise FilesterError(
-            f"upgrade command failed (exit {result.returncode}) - try manually: {' '.join(cmd)}"
-        )
-    console.print(
-        "[green]done[/] - run `filester --version` to confirm the new version"
-    )
-
-
 # --------------------------------------------------------------------------
 # CLI wiring
 # --------------------------------------------------------------------------
@@ -821,7 +821,6 @@ def build_parser():
         "config",
         help="save your API key to a persistent config file (~/.config/filester/.env)",
     )
-
     sp.add_argument(
         "--api-key",
         dest="config_api_key",
@@ -951,7 +950,9 @@ def build_parser():
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    argcomplete.autocomplete(parser)
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -975,7 +976,6 @@ def main(argv=None):
     client = FilesterClient(
         api_key=args.api_key, base_url=args.base_url, max_retries=args.max_retries
     )
-
     if not client.api_key and args.command not in ("config", "upgrade"):
         log.warning(
             "no API key set - run `filester config` to save one, or set FILESTER_API_KEY"
@@ -983,13 +983,13 @@ def main(argv=None):
 
     handlers = {
         "account": cmd_account,
+        "upgrade": cmd_upgrade,
         "config": cmd_config,
         "folders": cmd_folders,
         "mkdir": cmd_mkdir,
         "files": cmd_files,
         "upload": cmd_upload,
         "watch": cmd_watch,
-        "upgrade": cmd_upgrade,
     }
 
     try:

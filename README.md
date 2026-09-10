@@ -83,6 +83,23 @@ filester watch --dir <path> [--folder-path X]          # auto-upload daemon
 
 Run `filester <command> --help` for full flag lists.
 
+### Shell autocomplete
+
+Tab-completion for subcommands (`account`, `upload`, `folders`, ...) and
+flags (`--folder-path`, `--search`, ...) via [argcomplete](https://github.com/kislyuk/argcomplete):
+
+```bash
+# bash - add to ~/.bashrc, then restart your shell / `source ~/.bashrc`
+eval "$(register-python-argcomplete filester)"
+
+# zsh - add to ~/.zshrc
+autoload -U bashcompinit && bashcompinit
+eval "$(register-python-argcomplete filester)"
+```
+
+`register-python-argcomplete` ships with the `argcomplete` package, which
+is installed automatically as a dependency - nothing extra to install.
+
 ### Short flags
 
 | Flag | Short | Commands |
