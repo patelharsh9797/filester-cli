@@ -606,11 +606,15 @@ def _upload_one(
             if smart
             else resolver.resolve(folder_path)
         )
+
+    folder_name = resolver._full_path(resolver._folders_by_id[folder_id])
+
+    log.info("Folder Found: %s (%s)", folder_name, folder_id)
     log.info(
         "uploading %s (%s)%s",
         path,
         human_size(path.stat().st_size),
-        f" -> folder {folder_id}" if folder_id else "",
+        f" -> folder [bold cyan]{folder_name} ({folder_id})[/]" if folder_id else "",
     )
     result = client.upload_file(
         path, folder_id=folder_id, show_progress=not no_progress
