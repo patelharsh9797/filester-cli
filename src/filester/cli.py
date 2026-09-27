@@ -42,6 +42,7 @@ from requests_toolbelt.multipart.encoder import (
 )
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     DownloadColumn,
@@ -51,7 +52,7 @@ from rich.progress import (
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
-from rich.prompt import IntPrompt
+from rich.prompt import IntPrompt, Prompt
 from rich.table import Table
 
 try:
@@ -328,12 +329,17 @@ class FolderResolver:
         self._ensure_loaded()
         return [(self._full_path(f), f["id"]) for f in self._folders]
 
-    def resolve(self, path_str: Optional[str], create=True, public=1) -> Optional[str]:
-        """Strict resolution: '/'-separated path, auto-creates missing segments."""
+    def resolve(
+        self, path_str: Optional[str], create=True, public=1, confirm=False
+    ) -> Optional[str]:
+        """Strict resolution: '/'-separated path, auto-creates missing segments.
+        If confirm=True and running in a terminal, asks before creating any
+        missing segment (so a typo doesn't silently create a stray folder)."""
         if not path_str or path_str == "root":
             return None
         self._ensure_loaded()
         parent = None
+        built_path = []
         for part in [p for p in path_str.split("/") if p]:
             key = (parent, part)
             folder_id = self._index.get(key)
@@ -342,18 +348,55 @@ class FolderResolver:
                     raise FilesterError(
                         f"folder not found: {path_str!r} (missing segment {part!r})"
                     )
-                created = self.client.create_folder(part, parent=parent, public=public)
-                folder_id = created["identifier"]
-                self._index[key] = folder_id
-                folder_rec = {"id": folder_id, "name": part, "parent_id": parent}
-                self._folders.append(folder_rec)
-                self._folders_by_id[folder_id] = folder_rec
-                log.info(
-                    "created remote folder %r (id=%s)",
-                    self._full_path(folder_rec),
-                    folder_id,
-                )
+
+                if confirm and sys.stdin.isatty():
+                    shown_path = "/".join(built_path + [part])
+                    while True:
+                        console.print(
+                            Panel(
+                                f"[bold yellow]{shown_path}[/]",
+                                title="[bold]folder not found[/]",
+                                subtitle="[dim]nothing created yet[/]",
+                                border_style="yellow",
+                                expand=False,
+                            )
+                        )
+                        console.print(
+                            "  [green]\\[y][/] create it as-is    "
+                            "[cyan]\\[r][/] rename it    "
+                            "[red]\\[c][/] cancel"
+                        )
+                        choice = Prompt.ask(
+                            "", choices=["y", "r", "c"], default="y", show_choices=False
+                        )
+                        if choice == "y":
+                            break
+                        elif choice == "r":
+                            part = Prompt.ask("  [cyan]new name[/]")
+                            key = (parent, part)
+                            existing = self._index.get(key)
+                            if existing is not None:
+                                folder_id = existing
+                                break
+                        else:  # "c"
+                            console.print("[red]cancelled[/] - no folder created")
+                            raise FilesterError("cancelled - no folder created")
+                if folder_id is None:
+                    created = self.client.create_folder(
+                        part, parent=parent, public=public
+                    )
+                    folder_id = created["identifier"]
+                    self._index[key] = folder_id
+                    folder_rec = {"id": folder_id, "name": part, "parent_id": parent}
+                    self._folders.append(folder_rec)
+                    self._folders_by_id[folder_id] = folder_rec
+                    log.info(
+                        "created remote folder %r (id=%s)",
+                        self._full_path(folder_rec),
+                        folder_id,
+                    )
             parent = folder_id
+            built_path.append(part)
         return parent
 
     def resolve_smart(
@@ -404,7 +447,7 @@ class FolderResolver:
                     f"ambiguous folder {query!r}, matches: {names} - use the exact path/id, or run interactively"
                 )
 
-        return self.resolve(query, create=create, public=public)
+        return self.resolve(query, create=create, public=public, confirm=True)
 
 
 # --------------------------------------------------------------------------

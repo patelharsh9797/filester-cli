@@ -220,7 +220,7 @@ wheels = [
 
 [[package]]
 name = "filester-cli"
-version = "0.3.0"
+version = "0.3.2"
 source = { editable = "." }
 dependencies = [
     { name = "argcomplete", version = "3.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
